@@ -17,7 +17,7 @@ This system consolidates leads from **multiple Google Sheets sources** (connecte
 | Feature | Description |
 |---|---|
 | **Multi-source import** | Fetches leads from up to N Google Sheets sources automatically |
-| **Smart deduplication** | Priority order: Email → Phone → Name |
+| **Smart deduplication** | Priority order: Email → Phone |
 | **Universal date parsing** | Handles FR, EN, ISO, timestamp, serial formats |
 | **Date format detection** | Auto-detects DD/MM/YYYY vs MM/DD/YYYY per source file |
 | **Dynamic dashboard** | KPIs + cross-table by period (Daily / Weekly / Monthly / Yearly) |
