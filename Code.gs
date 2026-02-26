@@ -193,7 +193,9 @@ function fetchAndProcess(sources) {
 
   allLeads.sort(function(a,b){ return a[0] - b[0]; });
 
-  var seenEmail = {}, seenTel = {}, seenNom = {};
+  var seenEmail = {};
+  var seenTel   = {};
+  var seenNom   = {};
   var uniqueLeads = [], dupLeads = [];
 
   for (var li = 0; li < allLeads.length; li++) {
@@ -203,11 +205,20 @@ function fetchAndProcess(sources) {
     var nom   = norm(lead[1]);
     var isDup = false;
 
-    if (email)      { isDup = !!seenEmail[email]; seenEmail[email] = true; }
-    else if (tel)   { isDup = !!seenTel[tel];     seenTel[tel]     = true; }
-    else if (nom)   { isDup = !!seenNom[nom];     seenNom[nom]     = true; }
+    // Doublon si email OU téléphone déjà vu
+    if (email && seenEmail[email]) isDup = true;
+    if (tel   && seenTel[tel])     isDup = true;
+    // Fallback nom uniquement si pas d'email ET pas de tel
+    if (!email && !tel && nom && seenNom[nom]) isDup = true;
 
-    if (isDup) dupLeads.push(lead); else uniqueLeads.push(lead);
+    if (!isDup) {
+      if (email) seenEmail[email] = true;
+      if (tel)   seenTel[tel]     = true;
+      if (!email && !tel && nom) seenNom[nom] = true;
+      uniqueLeads.push(lead);
+    } else {
+      dupLeads.push(lead);
+    }
   }
 
   return { uniqueLeads: uniqueLeads, allLeads: allLeads, dupLeads: dupLeads, invalidCount: invalidCount };
@@ -345,7 +356,7 @@ function buildDashboard(ss, unique, all, dups, allSourceNames) {
   // Title
   dash.setRowHeight(1,8); dash.setRowHeight(2,58); dash.setRowHeight(3,20); dash.setRowHeight(4,4);
   setR(dash,2,2,"Lead Reporting Dashboard",{merge:[1,nbCols],fontSize:22,bold:true,fontColor:"#1E3A5F",vAlign:"middle"});
-  setR(dash,3,2,"Updated: "+today.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})+"   Deduplication: Email > Phone > Name",
+  setR(dash,3,2,"Updated: "+today.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})+"   Deduplication: Email | Phone",
     {merge:[1,nbCols],fontSize:9,italic:true,fontColor:"#AAAAAA"});
   dash.getRange(4,2,1,nbCols).setBackground("#1E3A5F");
 
