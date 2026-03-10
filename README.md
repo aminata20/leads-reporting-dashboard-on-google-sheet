@@ -1,229 +1,302 @@
-# Lead Reporting Dashboard on Google Sheet - Google Apps Script
+# Leads Reporting Dashboard — Google Apps Script
 
-Automated multi-source lead consolidation and reporting dashboard built with Google Apps Script and Google Sheets.
+A multi-source lead aggregation and reporting system built with Google Apps Script and Google Sheets. It consolidates leads from multiple Google Forms/Sheets into a single dashboard with automatic deduplication, business type classification, GA4 website traffic integration, and period-based analytics.
 
 ---
 
-## Project overview
+## Table of Contents
 
-This system consolidates leads from **multiple Google Sheets sources** (connected via Make/Integromat, Zapier, or Elementor webhook) into a single, unified dashboard, with deduplication, key performance indicator tracking, and dynamic filtering.
+- [Overview](#overview)
+- [Features](#features)
+- [Setup](#setup)
+- [Configuration](#configuration)
+- [How It Works](#how-it-works)
+- [Dashboard](#dashboard)
+- [Menu Reference](#menu-reference)
+- [Field Mapping](#field-mapping)
+- [Business Type Classification](#business-type-classification)
+- [GA4 Integration](#ga4-integration)
+- [Deduplication Logic](#deduplication-logic)
+- [Caching System](#caching-system)
+- [Triggers](#triggers)
+- [Sheet Structure](#sheet-structure)
 
-**Technologies used:** Google Sheets · Google Apps Script
+---
+
+## Overview
+
+This project automates lead reporting for businesses collecting leads from multiple sources (websites, landing pages, forms). Instead of checking each source manually, the dashboard pulls all data into one place, removes duplicates, classifies leads by business type, and displays analytics broken down by period and source.
+
+It is designed to run entirely inside Google Sheets with no external backend or paid services.
 
 ---
 
 ## Features
 
-| Feature | Description |
-|---|---|
-| **Multi-source import** | Fetches leads from up to N Google Sheets sources automatically |
-| **Smart deduplication** | Priority order: Email → Phone |
-| **Universal date parsing** | Handles FR, EN, ISO, timestamp, serial formats |
-| **Date format detection** | Auto-detects DD/MM/YYYY vs MM/DD/YYYY per source file |
-| **Dynamic dashboard** | KPIs + cross-table by period (Daily / Weekly / Monthly / Yearly) |
-| **Custom date filter** | Interactive dual-calendar with quick-select shortcuts |
-| **Multi-sheet support** | Each source can point to a specific tab via `gid` in URL |
-| **Source merging** | Same source name in Config = merged into one column |
-| **Nightly auto-sync** | Configurable trigger for automatic overnight consolidation |
+- Aggregates leads from up to 8+ Google Sheets sources
+- Deduplicates by email, phone number, and name
+- Keeps the most recent submission when duplicates are found
+- Classifies leads by business type with configurable merge rules
+- Displays 5 KPI counters: total, today, this week, this month, this year
+- Displays 3 performance KPIs: traffic-to-lead rate, month-over-month growth, top source this month
+- Period selector: Daily, Weekly, Monthly, Yearly views
+- Tag-based source filtering
+- Custom date range filter with calendar picker
+- GA4 website sessions and users table per source
+- Auto-sync every 8 hours via time-based trigger
+- Automatic re-authorization prompt on open
 
 ---
 
-## Spreadsheet Structure
+## Setup
 
-### Tabs
+**Step 1 — Copy the script**
 
-| Tab | Description |
-|---|---|
-| **Dashboard** | Main view — KPIs + dynamic leads table |
-| **Data** | Unique leads after deduplication |
-| **Raw** | All imported leads before deduplication |
-| **Duplicates** | Leads removed during deduplication |
-| **Config** | List of sources (Name + Google Sheets URL) |
-| **LeadCache** | *(hidden)* Internal cache for fast dashboard rendering |
+Open your Google Sheet, go to Extensions > Apps Script, paste the contents of `Code.gs`, and save.
 
-### Config Tab Format
+**Step 2 — Add the manifest scopes**
 
-| Column A | Column B |
-|---|---|
-| Source Name | Full Google Sheets URL (with `#gid=` for specific tab) |
+In Apps Script, go to Project Settings, enable "Show appsscript.json in editor", then paste the following into `appsscript.json`:
 
+```json
+{
+  "timeZone": "Europe/Paris",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/script.container.ui",
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/script.scriptapp"
+  ]
+}
+```
 
-> **Same name = merged column.** Two rows with the same name will be combined into one dashboard column.
+**Step 3 — Authorize the script**
+
+Reload the spreadsheet. A dialog will appear asking for authorization. Click the link and accept all permissions. If the dialog does not appear, use Lead Reporting > Authorize / Re-authorize script from the menu.
+
+**Step 4 — Set up triggers**
+
+Go to Lead Reporting > Setup triggers. This creates:
+- A time-based trigger that runs a full consolidation every 8 hours
+- An installable onEdit trigger that refreshes the dashboard (including GA4) when the period or tag selector is changed
+
+**Step 5 — Run the first consolidation**
+
+Go to Lead Reporting > Full Consolidation. This imports all leads, deduplicates them, and builds the dashboard.
 
 ---
 
-## Setup Instructions
+## Configuration
 
-### 1. Create the Google Sheets file
+The `Config` sheet drives everything. Each row defines one data source.
 
-Create a new Google Sheets file named **"Reporting Leads"** and add these tabs manually:
-- `Dashboard`
-- `Data`
-- `Raw`
-- `Duplicates`
-- `Config`
+| Column | Description |
+|--------|-------------|
+| A | Source name (displayed in the dashboard) |
+| B | Full URL of the source Google Sheet (including `gid=` parameter if needed) |
+| C | Tag (optional, used to group sources in the tag filter) |
+| D | GA4 Property ID (optional, numbers only, e.g. `526737266`) |
 
-### 2. Add your sources in Config
+Row 1 is a header row. Data starts from row 2.
 
-Fill in the **Config** tab starting from row 2:
-- **Column A** → Source display name
-- **Column B** → Full URL of the Google Sheet source
-
-To get the URL of a specific tab:
-1. Open the source Google Sheet
-2. Click on the target tab
-3. Copy the full URL from the browser (it includes `#gid=XXXXXXXXX`)
-
-### 3. Install the script
-
-1. In your Reporting Leads file: **Extensions → Apps Script**
-2. Delete all existing code in `Code.gs`
-3. Paste the full script content
-4. Click **Save** (💾)
-
-### 4. Authorize permissions
-
-1. Run `consolidateLeads` for the first time
-2. Click **Review permissions** when prompted
-3. Grant access to Google Sheets (needed to read source files)
-
-### 5. Run Full Consolidation
-
-From the **"Lead Reporting"** menu:
-> **Lead Reporting → Full Consolidation**
+The script reads columns A through D. Column F is used internally to display the last sync date.
 
 ---
 
-## Menu Options
+## How It Works
 
-| Menu Item | Action |
-|---|---|
-| **Full Consolidation** | Re-fetches all sources, rebuilds dashboard from scratch |
-| **Refresh Dashboard** | Re-fetches all sources, updates data without rebuilding layout |
-| **Date Filter** | Opens interactive calendar for custom date range filtering |
-| **Enable nightly auto-sync** | Sets a daily trigger at midnight for automatic consolidation |
+When a consolidation or refresh is triggered, the script:
 
----
-
-## Dashboard Periods
-
-| Period | Display | Limit |
-|---|---|---|
-| **Daily** | `25 Feb 2026` | Last 90 days |
-| **Weekly** | `February 16 - 22, 2026` | Last 6 months |
-| **Monthly** | `February 2026` | Last 24 months |
-| **Yearly** | `2026` | All years |
+1. Reads all source URLs from the Config sheet
+2. Opens each source spreadsheet and reads all rows
+3. Detects the column layout of each source using the field map (see Field Mapping)
+4. Normalizes each row into a standard 13-field format
+5. Parses and validates dates, filtering out invalid or future entries
+6. Sorts all leads by date descending to keep the most recent version of each person
+7. Runs deduplication using email, phone, and name as identifiers
+8. Writes unique leads to the Data sheet, all leads to Raw, duplicates to Duplicates
+9. Stores a lightweight cache in a hidden sheet called LeadCache
+10. Builds or refreshes the Dashboard sheet
 
 ---
 
-## KPI Cards
+## Dashboard
 
-| KPI | Description |
-|---|---|
-| **Total Leads** | All unique leads |
-| **Today** | Leads with today's date |
-| **This Week** | Leads in the current ISO week (Mon → Sun) |
-| **This Month** | Leads in the current calendar month |
-| **Year XXXX** | Leads in the current year (updates automatically) |
-| **Duplicates** | Total leads removed by deduplication |
+The dashboard is organized in vertical sections.
 
----
+**Rows 2-4** — Title bar with last updated date and a separator line.
 
-### Critical date format setting
+**Rows 6-7** — Five KPI cards: Total Leads, Today, This Week, This Month, Year to Date. Each card has a tooltip note explaining the metric.
 
-In Forms, the Date field must use **`Y-m-d`** format to output ISO dates:
+**Rows 9-10** — Three performance KPIs: Traffic to Lead Rate (requires GA4), Lead Growth month-over-month, and Top Source This Month.
 
-```
-Y-m-d  →  2026-02-25  ✅ (recommended, no ambiguity)
-d/m/Y  →  25/02/2026  ⚠️ (works but may cause edge cases)
-```
+**Row 13** — Period selector (Daily / Weekly / Monthly / Yearly) and Tag selector. Changing either value triggers an automatic redraw of all tables below.
 
-> **Why it matters:** Google Sheets may auto-interpret `9/2/2026` as September 2 (US format) instead of February 9 (FR format). ISO format `2026-02-09` is never ambiguous.
+**Rows 16+** — Three data tables stacked vertically:
+- Leads by Source: period rows, source columns, totals
+- Leads by Business Type: period rows, business type columns, totals
+- Website Visits GA4: sessions and unique users per source per period (only shown if GA4 property IDs are configured)
+
+All tables respect the current period and tag selection. A custom date filter (accessible from the menu) overrides the period selector and shows daily granularity for the selected range.
 
 ---
 
-## Technical Notes
+## Menu Reference
 
-### Deduplication logic
+The Lead Reporting menu is split into two sections.
 
-```
-1. If Email exists     → deduplicate by Email (normalized lowercase)
-2. Else if Phone exists → deduplicate by Phone (digits only)
-3. Else if Name exists  → deduplicate by Name (lowercase, no spaces)
+**Daily use**
 
-Chronological sort applied BEFORE dedup → oldest lead is kept
-```
+- Refresh Dashboard — re-imports all leads from all sources and rebuilds the dashboard
+- Date Filter — opens a calendar picker to apply a custom date range to all tables
 
-### Date parsing priority
+**Technical / admin**
 
-```
-1. Native Date object (Google Sheets auto-conversion)
-2. ISO with timezone  : 2026-02-09T23:00:00.000Z
-3. ISO date only      : 2026-02-09
-4. FR separator       : 25/02/2026 or 25-02-2026
-5. FR text            : 25 février 2026
-6. EN text            : February 25, 2026 or 25 Feb 2026
-7. Google Sheets serial number
-```
-
-### Multi-tab source URLs
-
-To target a specific tab, include the `gid` parameter in the URL:
-
-```
-https://docs.google.com/spreadsheets/d/{ID}/edit#gid={GID}
-```
-
-The `GID` is visible in the browser URL when you click on the tab.
-
-### Cache system
-
-After each consolidation, leads are stored in the hidden **LeadCache** tab as `YYYY-MM-DD` + source name pairs. This allows instant period switching (`onEdit` trigger) without re-fetching all sources.
+- Full Consolidation — same as Refresh but also rebuilds the entire dashboard layout from scratch
+- Setup triggers — installs the 8-hour auto-sync and the installable onEdit trigger
+- Test GA4 Access — runs a diagnostic on all configured GA4 properties and shows results in a popup
+- Authorize / Re-authorize script — forces the OAuth authorization flow
 
 ---
 
-## File Structure
+## Field Mapping
 
-```
-Code.gs
-│
-├── consolidateLeads()       — Full import + rebuild
-├── refreshDashboard()       — Re-fetch + update only
-├── fetchAndProcess()        — Core import engine
-│   ├── detectDateFormat()   — Auto-detect DD/MM vs MM/DD
-│   └── toDateObj()          — Universal date parser
-│
-├── buildDashboard()         — Full dashboard construction
-├── drawDynamicTable()       — Cross-table rendering
-├── groupBySource()          — Data grouping by period
-├── filterCustom()           — Custom date range filtering
-│
-├── storeCache()             — Write LeadCache tab
-├── loadCache()              — Read LeadCache tab
-│
-├── openDateFilter()         — HTML calendar dialog
-├── applyDateFilter()        — Apply filter from dialog
-│
-├── onEdit()                 — Period dropdown trigger
-├── onOpen()                 — Menu creation
-└── setNightlyTrigger()      — Auto-sync setup
-```
+The script maps source column headers to a standard set of fields using a case-insensitive, accent-tolerant lookup. Smart apostrophes and typographic quotes in header names are automatically normalized before comparison.
+
+| Internal Field | Recognized Headers (partial list) |
+|----------------|-----------------------------------|
+| date | date, created at, date de creation |
+| nom | nom, name, last name |
+| prenom | first name, prenom |
+| tel | telephone, phone, phone/whatsapp, numéro de téléphone (gsm) |
+| email | email, e-mail, adresse e-mail |
+| entreprise | entreprise, company name, nom de l'entreprise |
+| ville | ville, city |
+| pays | country, pays |
+| adresse | adresse, address, address line 1 |
+| type | business type, type d'activite, other business type |
+| message | additional details, message, request |
+| quantity | production_volume, estimated order quantity |
+| prodtype | product_type, toys category |
+
+To add a new alias for any field, add it to the corresponding array in the `FIELD_MAP` variable at the top of `Code.gs`.
+
+The standard output format for all sheets is: Date, Source, Type, Full Name, Phone, Email, Company, City, Country, Address, Message, Quantity, Product Type.
 
 ---
 
-## Troubleshooting
+## Business Type Classification
 
-| Problem | Likely cause | Fix |
-|---|---|---|
-| "No data for this selection" | Cache empty or corrupted | Run Full Consolidation |
-| Lead not imported | Invalid or future date | Check source sheet date format |
-| Wrong lead count | Deduplication working correctly | Check Duplicates tab |
-| New source not showing | Cache not refreshed | Run Full Consolidation |
-| Specific tab not loading | URL missing `#gid=` | Copy URL with tab active in browser |
-| Date parsing error | Ambiguous format (e.g. `9/2/2026`) | Set Forms to `Y-m-d` format |
+Raw business type values from source forms are normalized into canonical categories using the `canonicalBT` function.
+
+**Priority order (displayed left to right in the table)**
+
+1. Wholesaler
+2. Vape Shop
+3. Tobacco & Smoke Shop
+4. Retail Store
+5. Convenience Store
+6. E-Commerce Retail
+7. Consumer
+8. Unknown
+
+Each category absorbs its aliases via substring or exact match (case-insensitive). For example, "online retailer", "online vape store", and "ecommerce" all map to E-Commerce Retail. "Retail shop" and "retailer" map to Retail Store.
+
+Unrecognized values are kept as-is and displayed alphabetically between Consumer and Unknown. Unknown is always last.
+
+The priority order matters because it prevents incorrect absorption: E-Commerce Retail is evaluated before Retail Store, so "online retailer" is not incorrectly captured by the broader "retailer" alias.
+
+To add or modify categories, edit the `BT_MERGE` object and the `BT_PRIORITY` array in `Code.gs`.
 
 ---
 
-## License
+## GA4 Integration
 
-Free to use and modify.
+The GA4 table fetches sessions and unique users from the Google Analytics Data API v1beta for each source that has a property ID configured in column D of Config.
+
+**Requirements**
+
+- The Google Analytics Data API must be added in Apps Script under Services
+- The script must be authorized with the `analytics.readonly` scope
+- The GA4 property must be accessible by the Google account running the script
+
+**Dimension granularity**
+
+The GA4 query dimension automatically adapts to the selected period:
+
+| Period | GA4 Dimension |
+|--------|---------------|
+| Daily | date |
+| Weekly | isoYearIsoWeek |
+| Monthly | yearMonth |
+| Yearly | year |
+| Custom date filter | date (always daily) |
+
+**Trigger requirement**
+
+GA4 calls require OAuth tokens (`ScriptApp.getOAuthToken()`), which are not available in simple `onEdit` triggers. The installable `onDashboardEdit` trigger runs as the script owner and has full OAuth access. The simple `onEdit` fallback redraws only the Leads and Business Type tables without calling GA4.
+
+To diagnose GA4 issues, use Lead Reporting > Test GA4 Access.
+
+---
+
+## Deduplication Logic
+
+Deduplication runs after all sources are merged.
+
+1. All leads are sorted by date descending so the most recent submission is processed first
+2. The script iterates through the sorted list, tracking seen emails, phone numbers, and names
+3. A lead is marked as a duplicate if its normalized email, normalized phone, or (when both are absent) its name matches a previously seen value
+4. Unique leads are written to the Data sheet. Duplicates go to the Duplicates sheet.
+
+Phone normalization strips spaces, dashes, dots, parentheses, and the `+` prefix before comparison. Email normalization lowercases and strips whitespace. The result is that if the same person submits a form twice, only their most recent submission is counted.
+
+---
+
+## Caching System
+
+After each consolidation, the script writes a lightweight cache to a hidden sheet called `LeadCache`. This avoids re-fetching all source sheets when only the dashboard display needs to change (for example when switching periods or applying a date filter).
+
+The cache stores:
+- Row 1: JSON metadata (source names, total counts, last updated timestamp, GA4 property map)
+- Rows 2+: One row per unique lead with date, source name, and business type
+
+When the period or tag selector is changed, the `onDashboardEdit` trigger reads from the cache instead of re-fetching all sources. The `applyDateFilter` function also reads from the cache.
+
+The cache is rebuilt on every Full Consolidation and every Refresh Dashboard.
+
+---
+
+## Triggers
+
+**Time-based trigger**
+
+Created by `setNightlyTrigger`. Calls `consolidateLeads` every 8 hours. Runs as the script owner with full OAuth. Keeps the dashboard current without manual intervention.
+
+**Installable onEdit trigger**
+
+Also created by `setNightlyTrigger`. Calls `onDashboardEdit` when any cell in the Dashboard sheet is edited. Because it is installable, it runs with full OAuth and can call the GA4 API. It only reacts to edits on the period selector (row 13, column 3) and the tag selector (row 13, column 5).
+
+**Simple onEdit fallback**
+
+The built-in `onEdit` function responds to the same cells without OAuth. It redraws only the Leads by Source and Leads by Business Type tables, skipping GA4. This acts as a fallback if the installable trigger has not been set up.
+
+To reset all triggers, run Lead Reporting > Setup triggers again. It deletes all existing time-based and onEdit installable triggers before creating new ones.
+
+---
+
+## Sheet Structure
+
+| Sheet | Description |
+|-------|-------------|
+| Config | Source configuration: name, URL, tag, GA4 property ID |
+| Dashboard | Main reporting view, auto-generated |
+| Data | Unique (deduplicated) leads, sorted most recent first |
+| Raw | All leads including duplicates, sorted most recent first |
+| Duplicates | Leads removed by deduplication |
+| LeadCache | Hidden. Lightweight cache used by dashboard triggers |
